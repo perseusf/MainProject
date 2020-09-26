@@ -1,4 +1,6 @@
 import pydicom as dicom
+from pydicom import dcmread
+from pydicom.data import get_testdata_file
 import numpy as np
 from scipy.sparse import csc_matrix
 import matplotlib.pyplot as plt
@@ -24,7 +26,7 @@ def get_contour_file(path):
         contour_file (str): name of the file with the contour
     """
     # handle `/` missing
-    if path[-1] != '/': path += '/'
+    if path[-1] != '\\': path += '\\'
     # get .dcm contour file
     fpaths = [path + f for f in os.listdir(path) if '.dcm' in f]
     n = 0
@@ -32,7 +34,7 @@ def get_contour_file(path):
     for fpath in fpaths:
         f = dicom.read_file(fpath)
         if 'ROIContourSequence' in dir(f):
-            contour_file = fpath.split('/')[-1]
+            contour_file = fpath.split('\\')[-1]
             n += 1
     if n > 1: warnings.warn("There are multiple contour files, returning the last one!")
     if contour_file is None: print("No contour file found in directory")
@@ -86,7 +88,7 @@ def coord2pixels(contour_dataset, path):
     # extract the image id corresponding to given countour
     # read that dicom file (assumes filename = sopinstanceuid.dcm)
     img_ID = contour_dataset.ContourImageSequence[0].ReferencedSOPInstanceUID
-    img = dicom.read_file(path + img_ID + '.dcm')
+    img = dicom.read_file(path + 'RTSS' + '.dcm')
     img_arr = img.pixel_array
 
     # physical distance between the center of each pixel
@@ -122,7 +124,7 @@ def cfile2pixels(file, path, ROIContourSeq=0):
         contour_iamge_arrays: A list which have pairs of img_arr and contour_arr for a given contour file
     """
     # handle `/` missing
-    if path[-1] != '/': path += '/'
+    if path[-1] != '\\': path += '\\'
     f = dicom.read_file(path + file)
     # index 0 means that we are getting RTV information
     RTV = f.ROIContourSequence[ROIContourSeq]
@@ -171,11 +173,11 @@ def slice_order(path):
         ordered_slices: ordered tuples of filename and z-position
     """
     # handle `/` missing
-    if path[-1] != '/': path += '/'
+    if path[-1] != '\\': path += '\\'
     slices = []
     for s in os.listdir(path):
         try:
-            f = dicom.read_file(path + '/' + s)
+            f = dicom.read_file(path + '\\' + s)
             f.pixel_array  # to ensure not to read contour file
             assert f.Modality != 'RTDOSE'
             slices.append(f)
@@ -197,7 +199,7 @@ def get_contour_dict(contour_file, path, index):
         contour_dict: dictionary with 2d np.arrays
     """
     # handle `/` missing
-    if path[-1] != '/': path += '/'
+    if path[-1] != '\\': path += '\\'
     # img_arr, contour_arr, img_fname
     contour_list = cfile2pixels(contour_file, path, index)
 
@@ -219,7 +221,7 @@ def get_data(path, contour_file, index):
     images = []
     contours = []
     # handle `/` missing
-    if path[-1] != '/': path += '/'
+    if path[-1] != '\\': path += '\\'
     # get contour file
     # contour_file = get_contour_file(path)
     # get slice orders
@@ -252,7 +254,7 @@ def get_mask(path, contour_file, index, filled=True):
     """
     contours = []
     # handle `/` missing
-    if path[-1] != '/': path += '/'
+    if path[-1] != '\\': path += '\\'
     # get slice orders
     ordered_slices = slice_order(path)
     # get contour dict
@@ -288,15 +290,40 @@ def create_image_mask_files(path, contour_file, index, img_format='png'):
     Y = np.array([scn.binary_fill_holes(y) if y.max() == 1 else y for y in Y])
 
     # Create images and masks folders
-    new_path = '/'.join(path.split('/')[:-2])
-    os.makedirs(new_path + '/images/', exist_ok=True)
-    os.makedirs(new_path + '/masks/', exist_ok=True)
+    new_path = '\\'.join(path.split('\\')[:-2])
+    os.makedirs(new_path + '\\images\\', exist_ok=True)
+    os.makedirs(new_path + '\\masks\\', exist_ok=True)
     for i in range(len(X)):
-        plt.imsave(new_path + f'/images/image_{i}.{img_format}', X[i])
-        plt.imsave(new_path + f'/masks/mask_{i}.{img_format}', Y[i])
-
+        plt.imsave(new_path + f'\\images\\image_{i}.{img_format}', X[i])
+        plt.imsave(new_path + f'\\masks\\mask_{i}.{img_format}', Y[i])
 
 
 if __name__ == "__main__":
-    path1 = ''
-    create_image_mask_files(path1, 'RTSS.dcm', 1, 'png')
+
+    path1 = 'C:/Users/souverq/Desktop/testproject/RTSS.dcm'
+
+    ds = dcmread(path1)
+
+    # ds is the received dataset
+    # ds.file_meta = ds()
+    ds.file_meta.TransferSyntaxUID = dicom.uid.ExplicitVRBigEndian
+
+    print(ds['ROIContourSequence'])
+
+    # plt.imshow(ds.pixel_array, cmap=plt.cm.bone)
+    #create_image_mask_files(path1, 'RTSS.dcm', 0, 'png')
+
+# dataset = dcmread('RTSS.dcm')
+# print("Storage type.....:", dataset.SOPClassUID)
+# print()
+#
+# if 'PixelData' in dataset:
+#     rows = int(dataset.Rows)
+#     cols = int(dataset.Columns)
+#     print("Image size.......: {rows:d} x {cols:d}, {size:d} bytes".format(
+#         rows=rows, cols=cols, size=len(dataset.PixelData)))
+#     if 'PixelSpacing' in dataset:
+#         print("Pixel spacing....:", dataset.PixelSpacing)
+#
+# plt.imshow(dataset.pixel_array)
+# plt.show()
