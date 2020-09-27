@@ -298,20 +298,28 @@ def create_image_mask_files(path, contour_file, index, img_format='png'):
         plt.imsave(new_path + f'\\masks\\mask_{i}.{img_format}', Y[i])
 
 
+
+
 if __name__ == "__main__":
 
-    path1 = 'C:/Users/souverq/Desktop/testproject/RTSS.dcm'
+    path = 'C:\\Users\\souverq\\Desktop\\testproject\\'
 
-    ds = dcmread(path1)
+    # ds = dcmread(path1)
+    #
+    # print(ds.ROIContourSequence[0].ContourSequence[0].ContourData)
+
 
     # ds is the received dataset
     # ds.file_meta = ds()
-    ds.file_meta.TransferSyntaxUID = dicom.uid.ExplicitVRBigEndian
+    #ds.file_meta.TransferSyntaxUID = dicom.uid.ExplicitVRBigEndian
 
-    print(ds['ROIContourSequence'])
+    # for i in range(len(list(ds['ROIContourSequence']))):
+    #      print(ds.ROIContourSequence[i].ContourSequence[i].ContourData)
 
-    # plt.imshow(ds.pixel_array, cmap=plt.cm.bone)
-    #create_image_mask_files(path1, 'RTSS.dcm', 0, 'png')
+
+
+    # plt.imshow(ds.ROIContourSequence[0].ContourSequence[0].ContourData, cmap=plt.cm.bone)
+    create_image_mask_files(path, 'RTSS.dcm', 0, 'png')
 
 # dataset = dcmread('RTSS.dcm')
 # print("Storage type.....:", dataset.SOPClassUID)
