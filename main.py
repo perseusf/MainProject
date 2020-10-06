@@ -1,16 +1,21 @@
-# import pydicom as dicom
-# from pydicom import dcmread
-# from pydicom.data import get_testdata_file
-# import numpy as np
-# from scipy.sparse import csc_matrix
-# import matplotlib.pyplot as plt
-# import scipy.ndimage as scn
-# from collections import defaultdict
-# import os
-# import shutil
-# import operator
-# import warnings
-# import math
+import pydicom as dicom
+from pydicom import dcmread
+from pydicom.data import get_testdata_file
+import numpy as np
+from scipy.sparse import csc_matrix
+import matplotlib.pyplot as plt
+import scipy.ndimage as scn
+from collections import defaultdict
+import os
+import shutil
+import operator
+import warnings
+import math
+
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
+
+
+
 #
 #
 # # OK!!!
@@ -300,17 +305,46 @@
 #     for i in range(len(X)):
 #         plt.imsave(new_path + f'\\images\\image_{i}.{img_format}', X[i])
 #         plt.imsave(new_path + f'\\masks\\mask_{i}.{img_format}', Y[i])
+
+def contourdata2pixels(dataset1):
+    dataset1 = dcmread(path + filename)
+    ds = dataset1
+    for elem in ds.ROIContourSequence: #elem is
+        # print('hello')
+        for i in elem.ContourSequence:
+            # print(i.ContourData)
+            xs.extend(i.ContourData[0::3])
+            ys.extend(i.ContourData[1::3])
+            zs.extend(i.ContourData[2::3])
+
 #
-#
-#
-#
-# if __name__ == "__main__":
-#
-#     path = 'C:\\Users\\souverq\\Desktop\\testproject\\'
-#     filename = 'RTSS.dcm'
-#     ds = dcmread(path + filename)
-#     #
-#     # print(ds.ROIContourSequence[0].ContourSequence[0].ContourData)
+if __name__ == "__main__":
+
+    path = 'C:\\Users\\bzavo\\PycharmProjects\\MainProject\\'
+    filename = 'RTSS.dcm'
+    ds = dcmread(path + filename)
+
+    xs = []
+    ys = []
+    zs = []
+
+    contourdata2pixels(ds)
+    xs = [float(i) for i in xs]
+    ys = [float(i) for i in ys]
+    zs = [float(i) for i in zs]
+
+    print(xs)
+
+
+    fig = plt.figure()
+    ax = Axes3D(fig)
+
+    ax.scatter(xs, ys, zs)
+    plt.show()
+
+
+#     print(ds.ROIContourSequence[0].ContourSequence[0].ContourData)
+#     print(ds.ROIContourSequence[0].ContourSequence[0].ContourData[0])
 #
 #
 #     ds2 = dcmread(get_testdata_file('CT_small.dcm'))
@@ -331,80 +365,19 @@
 #     create_image_mask_files(path, 'RTSS.dcm', 0, 'png')
 #
 #     # print(cfile2pixels(filename, path, 0))
-# # dataset = dcmread('RTSS.dcm')
-# # print("Storage type.....:", dataset.SOPClassUID)
-# # print()
-# #
-# # if 'PixelData' in dataset:
-# #     rows = int(dataset.Rows)
-# #     cols = int(dataset.Columns)
-# #     print("Image size.......: {rows:d} x {cols:d}, {size:d} bytes".format(
-# #         rows=rows, cols=cols, size=len(dataset.PixelData)))
-# #     if 'PixelSpacing' in dataset:
-# #         print("Pixel spacing....:", dataset.PixelSpacing)
-# #
-# # plt.imshow(dataset.pixel_array)
-# # plt.show()
+# dataset = dcmread('RTSS.dcm')
+# print("Storage type.....:", dataset.SOPClassUID)
+# print()
 #
+# if 'PixelData' in dataset:
+#     rows = int(dataset.Rows)
+#     cols = int(dataset.Columns)
+#     print("Image size.......: {rows:d} x {cols:d}, {size:d} bytes".format(
+#         rows=rows, cols=cols, size=len(dataset.PixelData)))
+#     if 'PixelSpacing' in dataset:
+#         print("Pixel spacing....:", dataset.PixelSpacing)
 #
+# plt.imshow(dataset.pixel_array)
+# plt.show()
 
-import pydicom
-import numpy as np
-import matplotlib.pyplot as plt
-import sys
-import glob
 
-# load the DICOM files
-files = []
-print('glob: {}'.format(sys.argv[1]))
-for fname in glob.glob(sys.argv[1], recursive=False):
-    print("loading: {}".format(fname))
-    files.append(pydicom.dcmread(fname))
-
-print("file count: {}".format(len(files)))
-
-# skip files with no SliceLocation (eg scout views)
-slices = []
-skipcount = 0
-for f in files:
-    if hasattr(f, 'SliceLocation'):
-        slices.append(f)
-    else:
-        skipcount = skipcount + 1
-
-print("skipped, no SliceLocation: {}".format(skipcount))
-
-# ensure they are in the correct order
-slices = sorted(slices, key=lambda s: s.SliceLocation)
-
-# pixel aspects, assuming all slices are the same
-ps = slices[0].PixelSpacing
-ss = slices[0].SliceThickness
-ax_aspect = ps[1]/ps[0]
-sag_aspect = ps[1]/ss
-cor_aspect = ss/ps[0]
-
-# create 3D array
-img_shape = list(slices[0].pixel_array.shape)
-img_shape.append(len(slices))
-img3d = np.zeros(img_shape)
-
-# fill 3D array with the images from the files
-for i, s in enumerate(slices):
-    img2d = s.pixel_array
-    img3d[:, :, i] = img2d
-
-# plot 3 orthogonal slices
-a1 = plt.subplot(2, 2, 1)
-plt.imshow(img3d[:, :, img_shape[2]//2])
-a1.set_aspect(ax_aspect)
-
-a2 = plt.subplot(2, 2, 2)
-plt.imshow(img3d[:, img_shape[1]//2, :])
-a2.set_aspect(sag_aspect)
-
-a3 = plt.subplot(2, 2, 3)
-plt.imshow(img3d[img_shape[0]//2, :, :].T)
-a3.set_aspect(cor_aspect)
-
-plt.show()
