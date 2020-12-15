@@ -1,383 +1,224 @@
-import pydicom as dicom
 from pydicom import dcmread
-from pydicom.data import get_testdata_file
 import numpy as np
 from scipy.sparse import csc_matrix
 import matplotlib.pyplot as plt
-import scipy.ndimage as scn
-from collections import defaultdict
-import os
-import shutil
-import operator
-import warnings
 import math
-
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 
+def fun(contour_dataset, image, zcoord):
+    img_ID = image.SOPInstanceUID
+    img = image
+    img_arr = img.pixel_array
+    x_spacing, y_spacing = float(img.PixelSpacing[0]), float(img.PixelSpacing[1])
+    origin_x, origin_y, _ = img.ImagePositionPatient
+    rows = []
+    cols = []
+    #массивы для хранения номеров контуров
+    CTNumbers = []
+    T1Numbers = []
+    T2Numbers = []
+    #массивы контуров
+    CTX = []
+    CTY = []
+    T1X = []
+    T1Y = []
+    T2X = []
+    T2Y = []
+    #буфер
+    CTXT = []
+    CTYT = []
+    T1XT = []
+    T1YT = []
+    T2XT = []
+    T2YT = []
+    #массивы для центров контуров
+    CTXPoints = []
+    T1XPoints = []
+    T2XPoints = []
+    CTYPoints = []
+    T1YPoints = []
+    T2YPoints = []
+    #инициализация графиков
+    fig, ax = plt.subplots(1, figsize=(60, 50))
+    #заполнение массивов номерами контуров, чтобы произвести дальнейшее распределение контуров по своим массивам, согласно их номераам
+    for ObservationT in contour_dataset.RTROIObservationsSequence:
+        if 'CT' in ObservationT.ROIObservationLabel:
+            CTNumbers.append(int(ObservationT.ReferencedROINumber))
+        if 'T1' in ObservationT.ROIObservationLabel:
+            T1Numbers.append(int(ObservationT.ReferencedROINumber))
+        if 'T2' in ObservationT.ROIObservationLabel:
+            T2Numbers.append(int(ObservationT.ReferencedROINumber))
+#обработка данных
+    for ROIContourSequenceNumber in contour_dataset.ROIContourSequence:
+        for t in range(0, len(ROIContourSequenceNumber.ContourSequence)):
+            contour_coordinates = ROIContourSequenceNumber.ContourSequence[t].ContourData
+            # x, y, z координаты контура в миллиметрах
+            x0 = contour_coordinates[len(contour_coordinates) - 3]
+            y0 = contour_coordinates[len(contour_coordinates) - 2]
+            z0 = contour_coordinates[len(contour_coordinates) - 1]
+            coordinates = []
+            if (contour_coordinates[2] == zcoord):
+                tempry = -1
+                #преобразование
+                for i in range(0, len(contour_coordinates), 3):
+                    x = contour_coordinates[i]
+                    y = contour_coordinates[i + 1]
+                    z = contour_coordinates[i + 2]
+                    l = math.sqrt((x - x0) * (x - x0) + (y - y0) * (y - y0) + (z - z0) * (z - z0))
+                    l = math.ceil(l * 2) + 1
+                    for k in range(1, l + 1):
+                        coordinates.append([(x - x0) * k / l + x0, (y - y0) * k / l + y0, (z - z0) * k / l + z0])
+                    x0 = x
+                    y0 = y
+                    z0 = z
+                    #заполнение массивов контуров CT T1 T2
+                    if ROIContourSequenceNumber.ReferencedROINumber in CTNumbers:
+                        CTX.append((x - origin_x) / x_spacing)
+                        CTY.append((y - origin_y) / y_spacing)
+                        CTXT.append((x - origin_x) / x_spacing)
+                        CTYT.append((y - origin_y) / y_spacing)
+                        #этот блок ниже отвечает за прорисовку контура
+                        if tempry != ROIContourSequenceNumber.ReferencedROINumber:
+                            xt = CTXT[-1]
+                            yt = CTYT[-1]
+                            CTXT.pop() #ПОСЛЕДНИЙ ЭЛЕМЕНТ НАДО ПЕРЕНЕСТИ В НАЧАЛО СЛЕДУЮЩЕГО КОНТУРА
+                            CTYT.pop()
+                            # на ноль делить нельзя, поэтому откидываем эти варианты (это не выкинет точки, все на месте)
+                            if len(CTXT) != 0:
+                                CTXPoints.append(sum(CTXT) / len(CTXT))
+                                CTYPoints.append(sum(CTYT) / len(CTYT))
+                            # if len(CTXT) == 0:
+                            #     CTXPoints.append(sum(CTX) / len(CTX))
+                            # if len(CTYT) == 0:
+                            #     CTYPoints.append(sum(CTY) / len(CTY))
+                            ax.plot(CTXT, CTYT, color='g', linestyle='-')
+                            CTXT.clear()
+                            CTYT.clear()
+                            CTXT.append(xt)
+                            CTYT.append(yt)
+                    if ROIContourSequenceNumber.ReferencedROINumber in T1Numbers:
+                        T1X.append((x - origin_x) / x_spacing)
+                        T1Y.append((y - origin_y) / y_spacing)
+                        T1XT.append((x - origin_x) / x_spacing)
+                        T1YT.append((y - origin_y) / y_spacing)
+                        # этот блок ниже отвечает за прорисовку контура
+                        if tempry != ROIContourSequenceNumber.ReferencedROINumber:
+                            xt = T1XT[-1]
+                            yt = T1YT[-1]
+                            T1XT.pop()
+                            T1YT.pop()
+                            #на ноль делить нельзя, поэтому откидываем эти варианты (это не выкинет точки, все на месте)
+                            if len(T1XT) != 0 :
+                                T1XPoints.append(sum(T1XT) / len(T1XT))
+                                T1YPoints.append(sum(T1YT) / len(T1YT))
+                            # if len(T1XT) == 0:
+                            #     T1XPoints.append(sum(T1X) / len(T1X))
+                            # if len(CTYT) == 0:
+                            #     T1YPoints.append(sum(T1Y) / len(T1Y))
+                            ax.plot(T1XT, T1YT, color='r', linestyle='-')
+                            T1XT.clear()
+                            T1YT.clear()
+                            T1XT.append(xt)
+                            T1YT.append(yt)
+                    if ROIContourSequenceNumber.ReferencedROINumber in T2Numbers:
+                        T2X.append((x - origin_x) / x_spacing)
+                        T2Y.append((y - origin_y) / y_spacing)
+                        T2XT.append((x - origin_x) / x_spacing)
+                        T2YT.append((y - origin_y) / y_spacing)
+                        # этот блок ниже отвечает за прорисовку контура
+                        if tempry != ROIContourSequenceNumber.ReferencedROINumber:
+                            xt = T2XT[-1]
+                            yt = T2YT[-1]
+                            T2XT.pop()
+                            T2YT.pop()
+                            # на ноль делить нельзя, поэтому откидываем эти варианты (это не выкинет точки, все на месте)
+                            if len(T2XT) != 0:
+                                T2XPoints.append(sum(T2XT) / len(T2XT))
+                                T2YPoints.append(sum(T2YT) / len(T2YT))
+                            # if len(T2XT) == 0:
+                            #     T2XPoints.append(sum(T2X) / len(T2X))
+                            # if len(CTYT) == 0:
+                            #     T2YPoints.append(sum(T2Y) / len(T2Y))
+                            ax.plot(T2XT, T2YT, color='b', linestyle='-')
+                            T2XT.clear()
+                            T2YT.clear()
+                            T2XT.append(xt)
+                            T2YT.append(yt)
+                    tempry = ROIContourSequenceNumber.ReferencedROINumber
+            pixel_coordinates = [(np.round((y - origin_y) / y_spacing), np.round((x - origin_x) / x_spacing)) for x, y, _ in coordinates]
+            for i, j in list(set(pixel_coordinates)):
+                rows.append(i)
+                cols.append(j)
+            contour_arr = csc_matrix((np.ones_like(rows), (rows, cols)), dtype=np.int8, shape=(img_arr.shape[0], img_arr.shape[1])).toarray()
+
+    #обсчет точек по тройкам CT-T1 CT-T2 T1-T2
+    distancesCTT1 = []
+    distancesCTT2 = []
+
+    #ручная обработка первых трех выбивающихся точек (не очень сработало :с )
+    # xa = CTXPoints[0]
+    # ya = CTYPoints[0]
+    # xb = CTXPoints[1]
+    # yb = CTYPoints[1]
+    #
+    # CTXPoints[0] = CTXPoints[2]
+    # CTYPoints[0] = CTYPoints[2]
+    # CTXPoints[2] = xa
+    # CTYPoints[2] = ya
+    # CTXPoints[1] = CTXPoints[0]
+    # CTYPoints[1] = CTYPoints[0]
+    # CTXPoints[0] = xb
+    # CTYPoints[0] = yb
+    #начинается не от 0, а от 3, потому что отброшены первые три значения
+    for i in range(3, len(T1XPoints)):
+        distancesCTT1.append(math.sqrt((CTXPoints[i] - T1XPoints[i]) ** 2 + (CTYPoints[i] - T1YPoints[i]) ** 2))
+    for i in range(3, len(T2XPoints)):
+        distancesCTT2.append(math.sqrt((CTXPoints[i] - T2XPoints[i]) ** 2 + (CTYPoints[i] - T2YPoints[i]) ** 2))
+    print(distancesCTT1)
+    print(len(distancesCTT1), "/ 88")
+    print(distancesCTT2)
+    print(len(distancesCTT2), "/ 88")
+    meandistanceCTT1 = ((sum(distancesCTT1)/(len(CTXPoints))))
+    meandistanceCTT2 = ((sum(distancesCTT2))/(len(CTXPoints)))
+    meandistance = ((meandistanceCTT1 + meandistanceCTT2)/2)
+    print("mean distance CT T1 = ", round(meandistanceCTT1, 5), " mm")
+    print("mean distance CT T2 = ", round(meandistanceCTT2, 5), " mm")
+    print("mean distance = ", round(meandistance, 5), " mm")
 
 
-#
-#
-# # OK!!!
-# def get_contour_file(path):
-#     """
-#     Get contour file from a given path by searching for ROIContourSequence
-#     inside dicom data structure.
-#     More information on ROIContourSequence available here:
-#     http://dicom.nema.org/medical/dicom/2016c/output/chtml/part03/sect_C.8.8.6.html
-#
-#     Inputs:
-#             path (str): path of the the directory that has DICOM files in it, e.g. folder of a single patient
-#     Return:
-#         contour_file (str): name of the file with the contour
-#     """
-#     # handle `/` missing
-#     if path[-1] != '\\': path += '\\'
-#     # get .dcm contour file
-#     fpaths = [path + f for f in os.listdir(path) if '.dcm' in f]
-#     n = 0
-#     contour_file = None
-#     for fpath in fpaths:
-#         f = dicom.read_file(fpath)
-#         if 'ROIContourSequence' in dir(f):
-#             contour_file = fpath.split('\\')[-1]
-#             n += 1
-#     if n > 1: warnings.warn("There are multiple contour files, returning the last one!")
-#     if contour_file is None: print("No contour file found in directory")
-#     return contour_file
-#
-# #OK!!!
-#
-# def get_roi_names(contour_data):
-#     """
-#     This function will return the names of different contour data,
-#     e.g. different contours from different experts and returns the name of each.
-#     Inputs:
-#         contour_data (dicom.dataset.FileDataset): contour dataset, read by dicom.read_file
-#     Returns:
-#         roi_seq_names (list): names of the
-#     """
-#     roi_seq_names = [roi_seq.ROIName for roi_seq in list(contour_data.StructureSetROISequence)]
-#     return roi_seq_names
-#
-#
-# def coord2pixels(contour_dataset, path):
-#     """
-#     Given a contour dataset (a DICOM class) and path that has .dcm files of
-#     corresponding images. This function will return img_arr and contour_arr (2d image and contour pixels)
-#     Inputs
-#         contour_dataset: DICOM dataset class that is identified as (3006, 0016)  Contour Image Sequence
-#         path: string that tells the path of all DICOM images
-#     Return
-#         img_arr: 2d np.array of image with pixel intensities
-#         contour_arr: 2d np.array of contour with 0 and 1 labels
-#     """
-#
-#     contour_coord = contour_dataset.ContourData
-#     print(contour_coord)
-#     print(contour_dataset)
-#
-#     # x, y, z coordinates of the contour in mm
-#     x0 = contour_coord[len(contour_coord) - 3]
-#     y0 = contour_coord[len(contour_coord) - 2]
-#     z0 = contour_coord[len(contour_coord) - 1]
-#     coord = []
-#     for i in range(0, len(contour_coord), 3):
-#         x = contour_coord[i]
-#         y = contour_coord[i + 1]
-#         z = contour_coord[i + 2]
-#         l = math.sqrt((x - x0) * (x - x0) + (y - y0) * (y - y0) + (z - z0) * (z - z0))
-#         l = math.ceil(l * 2) + 1
-#         for j in range(1, l + 1):
-#             coord.append([(x - x0) * j / l + x0, (y - y0) * j / l + y0, (z - z0) * j / l + z0])
-#         x0 = x
-#         y0 = y
-#         z0 = z
-#
-#     # extract the image id corresponding to given countour
-#     # read that dicom file (assumes filename = sopinstanceuid.dcm)
-#     img_ID = contour_dataset.ContourImageSequence[0].ReferencedSOPInstanceUID
-#     img = dicom.read_file(path + 'RTSS' + '.dcm')
-#     img_arr = img.pixel_array
-#
-#     # physical distance between the center of each pixel
-#     x_spacing, y_spacing = float(img.PixelSpacing[0]), float(img.PixelSpacing[1])
-#
-#     # this is the center of the upper left voxel
-#     origin_x, origin_y, _ = img.ImagePositionPatient
-#
-#     # y, x is how it's mapped
-#     pixel_coords = [(np.round((y - origin_y) / y_spacing), np.round((x - origin_x) / x_spacing)) for x, y, _ in coord]
-#
-#     # get contour data for the image
-#     rows = []
-#     cols = []
-#     for i, j in list(set(pixel_coords)):
-#         rows.append(i)
-#         cols.append(j)
-#     contour_arr = csc_matrix((np.ones_like(rows), (rows, cols)), dtype=np.int8,
-#                              shape=(img_arr.shape[0], img_arr.shape[1])).toarray()
-#
-#     return img_arr, contour_arr, img_ID
-#
-#
-# def cfile2pixels(file, path, ROIContourSeq=0):
-#     """
-#     Given a contour file and path of related images return pixel arrays for contours
-#     and their corresponding images.
-#     Inputs
-#         file: filename of contour
-#         path: path that has contour and image files
-#         ROIContourSeq: tells which sequence of contouring to use default 0 (RTV)
-#     Return
-#         contour_iamge_arrays: A list which have pairs of img_arr and contour_arr for a given contour file
-#     """
-#     # handle `/` missing
-#     if path[-1] != '\\': path += '\\'
-#     f = dicom.read_file(path + file)
-#     # index 0 means that we are getting RTV information
-#     RTV = f.ROIContourSequence[ROIContourSeq]
-#     # get contour datasets in a list
-#     contours = [contour for contour in RTV.ContourSequence]
-#     img_contour_arrays = [coord2pixels(cdata, path) for cdata in contours]  # list of img_arr, contour_arr, im_id
-#
-#     # debug: there are multiple contours for the same image indepently
-#     # sum contour arrays and generate new img_contour_arrays
-#     contour_dict = defaultdict(int)
-#     for im_arr, cntr_arr, im_id in img_contour_arrays:
-#         contour_dict[im_id] += cntr_arr
-#     image_dict = {}
-#     for im_arr, cntr_arr, im_id in img_contour_arrays:
-#         image_dict[im_id] = im_arr
-#     img_contour_arrays = [(image_dict[k], contour_dict[k], k) for k in image_dict]
-#
-#     return img_contour_arrays
-#
-#
-# def plot2dcontour(img_arr, contour_arr, figsize=(20, 20)):
-#     """
-#     Shows 2d MR img with contour
-#     Inputs
-#         img_arr: 2d np.array image array with pixel intensities
-#         contour_arr: 2d np.array contour array with pixels of 1 and 0
-#     """
-#
-#     masked_contour_arr = np.ma.masked_where(contour_arr == 0, contour_arr)
-#     plt.figure(figsize=figsize)
-#     plt.subplot(1, 2, 1)
-#     plt.imshow(img_arr, cmap='gray', interpolation='none')
-#     plt.subplot(1, 2, 2)
-#     plt.imshow(img_arr, cmap='gray', interpolation='none')
-#     plt.imshow(masked_contour_arr, cmap='cool', interpolation='none', alpha=0.7)
-#     plt.show()
-#
-#
-# def slice_order(path):
-#     """
-#     Takes path of directory that has the DICOM images and returns
-#     a ordered list that has ordered filenames
-#     Inputs
-#         path: path that has .dcm images
-#     Returns
-#         ordered_slices: ordered tuples of filename and z-position
-#     """
-#     # handle `/` missing
-#     if path[-1] != '\\': path += '\\'
-#     slices = []
-#     for s in os.listdir(path):
-#         try:
-#             f = dicom.read_file(path + '\\' + s)
-#             f.pixel_array  # to ensure not to read contour file
-#             assert f.Modality != 'RTDOSE'
-#             slices.append(f)
-#         except:
-#             continue
-#
-#     slice_dict = {s.SOPInstanceUID: s.ImagePositionPatient[-1] for s in slices}
-#     ordered_slices = sorted(slice_dict.items(), key=operator.itemgetter(1))
-#     return ordered_slices
-#
-#
-# def get_contour_dict(contour_file, path, index):
-#     """
-#     Returns a dictionary as k: img fname, v: [corresponding img_arr, corresponding contour_arr]
-#     Inputs:
-#         contour_file: .dcm contour file name
-#         path: path which has contour and image files
-#     Returns:
-#         contour_dict: dictionary with 2d np.arrays
-#     """
-#     # handle `/` missing
-#     if path[-1] != '\\': path += '\\'
-#     # img_arr, contour_arr, img_fname
-#     contour_list = cfile2pixels(contour_file, path, index)
-#
-#     contour_dict = {}
-#     for img_arr, contour_arr, img_id in contour_list:
-#         contour_dict[img_id] = [img_arr, contour_arr]
-#
-#     return contour_dict
-#
-#
-# def get_data(path, contour_file, index):
-#     """
-#     Generate image array and contour array
-#     Inputs:
-#         path (str): path of the the directory that has DICOM files in it
-#         contour_file: structure file
-#         index (int): index of the structure
-#     """
-#     images = []
-#     contours = []
-#     # handle `/` missing
-#     if path[-1] != '\\': path += '\\'
-#     # get contour file
-#     # contour_file = get_contour_file(path)
-#     # get slice orders
-#     ordered_slices = slice_order(path)
-#     # get contour dict
-#     contour_dict = get_contour_dict(contour_file, path, index)
-#
-#     for k, v in ordered_slices:
-#         # get data from contour dict
-#         if k in contour_dict:
-#             images.append(contour_dict[k][0])
-#             contours.append(contour_dict[k][1])
-#         # get data from dicom.read_file
-#         else:
-#             img_arr = dicom.read_file(path + k + '.dcm').pixel_array
-#             contour_arr = np.zeros_like(img_arr)
-#             images.append(img_arr)
-#             contours.append(contour_arr)
-#
-#     return np.array(images), np.array(contours)
-#
-#
-# def get_mask(path, contour_file, index, filled=True):
-#     """
-#     Generate image array and contour array
-#     Inputs:
-#         path (str): path of the the directory that has DICOM files in it
-#         contour_file: structure file
-#         index (int): index of the structure
-#     """
-#     contours = []
-#     # handle `/` missing
-#     if path[-1] != '\\': path += '\\'
-#     # get slice orders
-#     ordered_slices = slice_order(path)
-#     # get contour dict
-#     contour_dict = get_contour_dict(contour_file, path, index)
-#
-#     for k, v in ordered_slices:
-#         # get data from contour dict
-#         if k in contour_dict:
-#             y = contour_dict[k][1]
-#             y = scn.binary_fill_holes(y) if y.max() == 1 else y
-#             contours.append(y)
-#         # get data from dicom.read_file
-#         else:
-#             img_arr = dicom.read_file(path + k + '.dcm').pixel_array
-#             contour_arr = np.zeros_like(img_arr)
-#             contours.append(contour_arr)
-#
-#     return np.array(contours)
-#
-#
-# def create_image_mask_files(path, contour_file, index, img_format='png'):
-#     """
-#     Create image and corresponding mask files under to folders '/images' and '/masks'
-#     in the parent directory of path.
-#
-#     Inputs:
-#         path (str): path of the the directory that has DICOM files in it, e.g. folder of a single patient
-#         index (int): index of the desired ROISequence
-#         img_format (str): image format to save by, png by default
-#     """
-#     # Extract Arrays from DICOM
-#     X, Y = get_data(path, contour_file, index)
-#     Y = np.array([scn.binary_fill_holes(y) if y.max() == 1 else y for y in Y])
-#
-#     # Create images and masks folders
-#     new_path = '\\'.join(path.split('\\')[:-2])
-#     os.makedirs(new_path + '\\images\\', exist_ok=True)
-#     os.makedirs(new_path + '\\masks\\', exist_ok=True)
-#     for i in range(len(X)):
-#         plt.imsave(new_path + f'\\images\\image_{i}.{img_format}', X[i])
-#         plt.imsave(new_path + f'\\masks\\mask_{i}.{img_format}', Y[i])
-
-def contourdata2pixels(dataset1):
-    dataset1 = dcmread(path + filename)
-    ds = dataset1
-    for elem in ds.ROIContourSequence: #elem is
-        # print('hello')
-        for i in elem.ContourSequence:
-            # print(i.ContourData)
-            xs.extend(i.ContourData[0::3])
-            ys.extend(i.ContourData[1::3])
-            zs.extend(i.ContourData[2::3])
-
-#
-if __name__ == "__main__":
-
-    path = 'C:\\Users\\bzavo\\PycharmProjects\\MainProject\\'
-    filename = 'RTSS.dcm'
-    ds = dcmread(path + filename)
-
-    xs = []
-    ys = []
-    zs = []
-
-    contourdata2pixels(ds)
-    xs = [float(i) for i in xs]
-    ys = [float(i) for i in ys]
-    zs = [float(i) for i in zs]
-
-    print(xs)
-
-
-    fig = plt.figure()
-    ax = Axes3D(fig)
-
-    ax.scatter(xs, ys, zs)
+#графики для центров контуров
+    plt.scatter(CTXPoints, CTYPoints, color='g', marker='.')
+    plt.scatter(T1XPoints, T1YPoints, color='r', marker='.')
+    plt.scatter(T2XPoints, T2YPoints, color='b', marker='.')
+    # fig = plt.gcf()
     plt.show()
+    # plt.draw()
+    # fig.savefig('contours.png', dpi=300)
+    return img_arr, contour_arr, img_ID, CTX, CTY, T1X, T1Y, T2X, T2Y
 
+#найти все доступные координаты z контуров
+def zcoords(contour_dataset):
+    print("Possible z coordinates")
+    possibleZ = []
+    for q in range(0, len(contour_dataset.ROIContourSequence)):
+        for p in range(0, len(contour_dataset.ROIContourSequence[q].ContourSequence)):
+            contour_coordinates = contour_dataset.ROIContourSequence[q].ContourSequence[p].ContourData
+            for i in range(0, len(contour_coordinates), 3):
+                z = contour_coordinates[i + 2]
+                possibleZ.append(z)
+    possibleZ = list(set(possibleZ))
+    possibleZ.sort()
+    for x in possibleZ: print(x)
 
-#     print(ds.ROIContourSequence[0].ContourSequence[0].ContourData)
-#     print(ds.ROIContourSequence[0].ContourSequence[0].ContourData[0])
-#
-#
-#     ds2 = dcmread(get_testdata_file('CT_small.dcm'))
-#
-#
-#
-#
-#     # ds is the received dataset
-#     # ds.file_meta = ds()
-#     ds.file_meta.TransferSyntaxUID = dicom.uid.ExplicitVRBigEndian
-#
-#     # for i in range(len(list(ds['ROIContourSequence']))):
-#     #      print(ds.ROIContourSequence[i].ContourSequence[i].ContourData)
-#
-#
-#
-#     #plt.imshow(ds.ROIContourSequence[0].ContourSequence[0].ContourData, cmap=plt.cm.bone)
-#     create_image_mask_files(path, 'RTSS.dcm', 0, 'png')
-#
-#     # print(cfile2pixels(filename, path, 0))
-# dataset = dcmread('RTSS.dcm')
-# print("Storage type.....:", dataset.SOPClassUID)
-# print()
-#
-# if 'PixelData' in dataset:
-#     rows = int(dataset.Rows)
-#     cols = int(dataset.Columns)
-#     print("Image size.......: {rows:d} x {cols:d}, {size:d} bytes".format(
-#         rows=rows, cols=cols, size=len(dataset.PixelData)))
-#     if 'PixelSpacing' in dataset:
-#         print("Pixel spacing....:", dataset.PixelSpacing)
-#
-# plt.imshow(dataset.pixel_array)
-# plt.show()
-
-
+if __name__ == "__main__":
+    #путь до папки
+    path = 'C:\\Users\\bzavo\\PycharmProjects\\MainProject\\DICOM\\'
+    filename = 'RTSS.dcm'
+    image = 'IMG0000000100.dcm'
+    ds = dcmread(path + filename)
+    image = dcmread(path + image)
+    #все данные есть при z=-14
+    zcoords(ds)
+    print("z = -14 или -24 отлично подходит")
+    zcoord = float(input("Enter Z coordinate from the list above \n"))
+    t = fun(ds, image, zcoord)
