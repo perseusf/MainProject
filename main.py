@@ -4,6 +4,8 @@ from scipy.sparse import csc_matrix
 import matplotlib.pyplot as plt
 import math
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
+import pandas as pd
+import scipy.stats as stats
 
 def fun(contour_dataset, image, zcoord):
     img_ID = image.SOPInstanceUID
@@ -151,11 +153,19 @@ def fun(contour_dataset, image, zcoord):
                 cols.append(j)
             contour_arr = csc_matrix((np.ones_like(rows), (rows, cols)), dtype=np.int8, shape=(img_arr.shape[0], img_arr.shape[1])).toarray()
 
-    #обсчет точек по тройкам CT-T1 CT-T2 T1-T2
+    #графики для центров контуров
+    plt.scatter(CTXPoints, CTYPoints, color='g', marker='.')
+    plt.scatter(T1XPoints, T1YPoints, color='r', marker='.')
+    plt.scatter(T2XPoints, T2YPoints, color='b', marker='.')
+    # fig = plt.gcf()
+    plt.show()
+    # plt.draw()
+    # fig.savefig('contours.png', dpi=300)
+    plt.figure(1)
+    # обсчет точек по тройкам CT-T1 CT-T2 T1-T2
     distancesCTT1 = []
     distancesCTT2 = []
-
-    #ручная обработка первых трех выбивающихся точек (не очень сработало :с )
+    # ручная обработка первых трех выбивающихся точек (не очень сработало :с )
     # xa = CTXPoints[0]
     # ya = CTYPoints[0]
     # xb = CTXPoints[1]
@@ -169,7 +179,7 @@ def fun(contour_dataset, image, zcoord):
     # CTYPoints[1] = CTYPoints[0]
     # CTXPoints[0] = xb
     # CTYPoints[0] = yb
-    #начинается не от 0, а от 3, потому что отброшены первые три значения
+    # начинается не от 0, а от 3, потому что отброшены первые три значения
     for i in range(3, len(T1XPoints)):
         distancesCTT1.append(math.sqrt((CTXPoints[i] - T1XPoints[i]) ** 2 + (CTYPoints[i] - T1YPoints[i]) ** 2))
     for i in range(3, len(T2XPoints)):
@@ -178,22 +188,27 @@ def fun(contour_dataset, image, zcoord):
     print(len(distancesCTT1), "/ 88")
     print(distancesCTT2)
     print(len(distancesCTT2), "/ 88")
-    meandistanceCTT1 = ((sum(distancesCTT1)/(len(CTXPoints))))
-    meandistanceCTT2 = ((sum(distancesCTT2))/(len(CTXPoints)))
-    meandistance = ((meandistanceCTT1 + meandistanceCTT2)/2)
+    meandistanceCTT1 = np.mean(distancesCTT1)
+    meandistanceCTT2 = np.mean(distancesCTT2)
     print("mean distance CT T1 = ", round(meandistanceCTT1, 5), " mm")
+    print("max distance CT T1 = ", round(max(distancesCTT1), 5), " mm")
+    print("min distance CT T1 = ", round(min(distancesCTT1), 5), " mm")
+
     print("mean distance CT T2 = ", round(meandistanceCTT2, 5), " mm")
-    print("mean distance = ", round(meandistance, 5), " mm")
+    print("max distance CT T2 = ", round(max(distancesCTT2), 5), " mm")
+    print("min distance CT T2 = ", round(min(distancesCTT2), 5), " mm")
 
+    # графики для отклонений T1 и T2 от СТ
+    d = dict(T1 = np.array(distancesCTT1), T2 = np.array(distancesCTT2))
+    df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in d.items()]))
 
-#графики для центров контуров
-    plt.scatter(CTXPoints, CTYPoints, color='g', marker='.')
-    plt.scatter(T1XPoints, T1YPoints, color='r', marker='.')
-    plt.scatter(T2XPoints, T2YPoints, color='b', marker='.')
-    # fig = plt.gcf()
+    # df = pd.DataFrame({
+    #     'T1': distancesCTT1,
+    #     'T2': distancesCTT2,
+    # })
+    df = df.plot.kde()
     plt.show()
-    # plt.draw()
-    # fig.savefig('contours.png', dpi=300)
+
     return img_arr, contour_arr, img_ID, CTX, CTY, T1X, T1Y, T2X, T2Y
 
 #найти все доступные координаты z контуров
